@@ -1,0 +1,51 @@
+#create another directory where all preprocessing will occur
+mkdir 01-HTS_Preproc
+
+#We will be using HTStream to clean/process reads so load the HTStream module 
+
+#Find rRNA sequences from NCBI database
+  #1. First, go to NCBI and in the Search dropdown select “Taxonomy” and search for your species
+  #2. Click on your species links until your reach a page with the “Subtree links” and click this link for for Nucleotide
+  #3. Under Molecule Types, click on “rRNA”.
+  #4. Click on “Send”, choose “File”, choose Format “FASTA”, and click on “Create File”.
+  #5. Save this file to your computer, and rename it to ‘rrna.fasta’.
+  
+#Now, make a directory in your “rnaseq_example” directory called “ref”:
+mkdir ~/rnaseq_example/ref
+
+#Upload your rrna.fasta file to the ‘ref’ directory on the cluster using either scp or FileZilla. 
+#Or if you feel like cheating, paste the contents of rrna.fa using nano into a file named ~/rnaseq_example/ref/rrna.fasta
+
+#Now it's time to preprocess! Copy the below code into a file to run:
+
+start=`date +%s`
+echo $HOSTNAME
+
+outpath='01-HTS_Preproc'
+[[ -d ${outpath} ]] || mkdir ${outpath}
+
+for sample in `cat samples.txt`
+do
+  [[ -d ${outpath}/${sample} ]] || mkdir ${outpath}/${sample}
+  echo "SAMPLE: ${sample}"
+
+  call="hts_Stats -O -L ${outpath}/${sample}/${sample}_htsStats.log -1 00-RawData/${sample}/*R1* -2 00-RawData/${sample}/*R2* | \
+        hts_SeqScreener -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_SuperDeduper -e 250000 -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_SeqScreener -s ref/rrna.fasta -r -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_AdapterTrimmer -n -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_QWindowTrim -n -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_NTrimmer -n -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_CutTrim -n -m 50 -S -O -A -L ${outpath}/${sample}/${sample}_htsStats.log | \
+        hts_Stats -S -A -L ${outpath}/${sample}/${sample}_htsStats.log -g -p ${outpath}/${sample}/${sample}"
+
+  echo $call
+  eval $call
+done
+
+end=`date +%s`
+runtime=$((end-start))
+echo $runtime
+
+
+
