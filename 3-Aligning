@@ -1,0 +1,81 @@
+#To align your data you will need the genome and annotation file for your species. Make sure you grab the GTF (not GFF3) annotation file.
+cd ~/rnaseq_example/ref
+wget <link to genome>
+wget <link to annotation> 
+#use gunzip to uncompress the files
+
+#Load STAR and make a directory for the star index 
+cd ../ref
+mkdir star_index
+
+#Generate the index:
+
+STAR --runThreadN 4 \
+--runMode genomeGenerate \
+--genomeDir star_index \
+--genomeFastaFiles file.dna.toplevel.fa \
+--sjdbGTFfile file.gtf \
+--sjdbOverhang 99
+
+#Create an output directory for STAR:
+cd ~/rnaseq_example
+mkdir 02-STAR_alignment
+
+# Now run all of the STAR alignments:
+
+start=`date +%s`
+echo $HOSTNAME
+
+outpath='02-STAR_alignment'
+[[ -d ${outpath} ]] || mkdir ${outpath}
+
+REF="ref/star_index"
+GTF="ref/Ovis_aries.Oar_v3.1.96.gtf"
+
+for sample in `cat samples.txt`
+do
+  [[ -d ${outpath}/${sample} ]] || mkdir ${outpath}/${sample}
+  echo "SAMPLE: ${sample}"
+
+  call="STAR --runThreadN 8 \
+        --sjdbOverhang 99 \
+        --genomeDir $REF \
+        --sjdbGTFtagExonParentGene gene_id \
+        --sjdbGTFfile $GTF \
+        --outSAMtype BAM SortedByCoordinate \
+        --outReadsUnmapped Fastx \
+        --quantMode GeneCounts \
+        --outFileNamePrefix ${outpath}/${sample}/${sample}_ \
+        --readFilesCommand zcat \
+        --readFilesIn 01-HTS_Preproc/${sample}/${sample}_R1.fastq.gz 01-HTS_Preproc/${sample}/${sample}_R2.fastq.gz"
+
+
+  echo $call
+  eval $call
+done
+
+end=`date +%s`
+runtime=$((end-start))
+echo $runtime
+
+
+#Collect alignment stats 
+  # run from directory containing STAR alignment sample sub-directories, i.e. 02-Alignment
+
+echo -en "sample_names\t" > names.txt
+echo -en "total_in_feaure\t" > totals.txt
+cat */*ReadsPerGene.out.tab | head -4 | cut -f1 > stats.txt
+cat ../samples.txt | while read sample; do
+    echo $sample
+    echo -en "$sample\t" >> names.txt
+    head -4 */${sample}_ReadsPerGene.out.tab | cut -f4 > temp1
+    paste stats.txt temp1 > temp2
+    mv temp2 stats.txt
+    tail -n +5 */${sample}_ReadsPerGene.out.tab | cut -f4 | \
+        perl -ne '$tot+=$_ }{ print "$tot\t"' >> totals.txt
+done
+cat names.txt stats.txt totals.txt > temp1
+mv temp1 stats.txt
+rm names.txt
+rm totals.txt
+
