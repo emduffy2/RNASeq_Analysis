@@ -1,0 +1,26 @@
+#go to your 02-STAR_alignment directory. Use a wildcard to list all of the counts files from all of the STAR alignment directories:
+cd ~/rnasq_example/02-STAR_alignment
+ls -1 */*ReadsPerGene.out.tab
+
+#Make counts directory and create filepaths to alignments 
+cd ../    # make sure you're in the dir above 02-STAR_alignment
+mkdir 03-Counts
+for x in 02-STAR_alignment/*/*ReadsPerGene.out.tab; do \
+    s=`basename $x | cut -f1 -d_`
+    echo $s
+    cat $x | tail -n +5 | cut -f4 > 03-Counts/$s.count
+done
+#after this command, there should be a counts file for every sample in 03-Counts
+
+#Get the columns for the final table. Because all of these files are sorted in the exact same order (by gene ID), we can just use the columns from any of the files:
+tail -n +5 02-STAR_alignment/C61/C61_ReadsPerGene.out.tab | cut -f1 > geneids.txt
+head geneids.txt
+
+#Finally, we want to combine all of these columns together using the ‘paste’ command, and put it in a temporary file:
+paste geneids.txt 03-Counts/*.count > tmp.out
+
+#Ceate a header for our final counts file and combine it with the temp file
+cat samples.txt | paste -s > header.txt
+
+#Put everything together:
+cat header.txt tmp.out > all_counts.txt
