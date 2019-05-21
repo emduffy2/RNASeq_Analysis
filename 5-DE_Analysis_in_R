@@ -1,0 +1,81 @@
+
+##Do In R
+
+#First, install the edgeR package if not already installed (which installs limma as a dependency)
+source("https://bioconductor.org/biocLite.R")
+biocLite("edgeR")
+
+#Load the edgeR package (which loads limma as a dependency)
+library(edgeR)
+
+#Read in the counts table
+counts <- read.delim("all_counts.txt", row.names = 1)
+head(counts)
+
+#Create DGEList object
+d0 <- DGEList(counts)
+
+#Calculate normalization factors
+d0 <- calcNormFactors(d0)
+d0
+
+#Filter low-expressed genes (“low-expressed” is subjective and depends on the dataset).
+cutoff <- 1
+drop <- which(apply(cpm(d0), 1, max) < cutoff)
+d <- d0[-drop,] 
+dim(d) # number of genes left
+
+#Derive experiment information from the sample names
+  ##For example a study had two factors, environment (“HS” or “TN”) and supplement ("C", "RH",  or "ZH")
+  ##The sample names are the environment, followed by supplement, followed by sample id
+
+snames <- colnames(counts) # Sample names
+snames #lists sample names
+
+#Create a new variable “group”
+##Identify the treatment/group for each sample.  Input in the same order (across columns) as the .csv
+##Note: You can't use group names that start with a number!!
+#group<-factor(c("TNRH", "HSRH", etc.))
+
+#Multidimensional scaling (MDS) plot
+plotMDS(d, col = as.numeric(group))
+
+#Voom transformation and calculation of variance weights
+  #Specify the model to be fitted. We do this before using voom since voom uses variances of the model residuals (observed - fitted)
+mm <- model.matrix(~0 + group)
+#The above specifies a model where each coefficient corresponds to a group mean
+
+y <- voom(d, mm, plot = T)
+
+#Fitting linear models in limma
+  #lmFit fits a linear model using weighted least squares for each gene:
+fit <- lmFit(y, mm)
+head(coef(fit))
+
+#Comparisons between groups (log fold-changes) are obtained as contrasts of these fitted linear models:
+  #Specify which groups to compare:
+  #Example for a comparison between HSC and TNC
+
+contr <- makeContrasts(groupHSC - groupTNC, levels = colnames(coef(fit)))
+contr
+
+#Estimate contrast for each gene
+tmp <- contrasts.fit(fit, contr)
+
+#Empirical Bayes smoothing of standard errors 
+tmp <- eBayes(tmp)
+
+#What genes are most differentially expressed?
+top.table <- topTable(tmp, sort.by = "P", n = Inf)
+head(top.table, 20)
+
+#How many DE genes are there?
+length(which(top.table$adj.P.Val < 0.05))
+
+#Write top.table to a file
+top.table$Gene <- rownames(top.table)
+top.table <- top.table[,c("Gene", names(top.table)[1:6])]
+write.table(top.table, file = "HSC_v_TNC.txt", row.names = F, sep = "\t", quote = F)
+
+
+##Can now take results to IPA to visualize
